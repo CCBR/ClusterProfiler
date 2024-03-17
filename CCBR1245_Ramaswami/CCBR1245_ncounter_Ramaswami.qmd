@@ -1,0 +1,133 @@
+---
+title: "CCBR1245 Pathway Analysis"
+format: html
+editor: visual
+---
+
+```{r}
+library(clusterProfiler)
+library(enrichplot)
+library(ggplot2)
+library(org.Hs.eg.db)
+library(DOSE)
+
+#library(pheatmap)
+
+#library(ggupset)
+
+#library(tidyverse)
+
+```
+
+Load the inputs
+
+```{r}
+
+# Load the DEG list for KS Alone contrast
+
+DEG_List_KS_Alone <- read.csv("/Users/cauleyes/CCBR/CCBR-1245_Ramaswami/CCBR1245_Ramaswami_nCounter/Results/DEG/DEG_list_KS_alone.csv")
+ 
+
+# Gather the genes names based on log2 fold change order
+log2fc.gene.list <- DEG_List_KS_Alone$log2FoldChange
+names(log2fc.gene.list) <- DEG_List_KS_Alone$gene
+log2fc.gene.list <- sort(log2fc.gene.list, decreasing = TRUE)
+
+# Remove control probes
+control.probes <- grep("^POS_|^NEG", names(log2fc.gene.list))
+log2fc.gene.list <- log2fc.gene.list[-control.probes]
+
+
+ 
+```
+
+```{r}
+
+# Check the available gene names types
+keytypes(org.Hs.eg.db)
+
+# Grab the potential gene mapping list
+gene.mapping <- as.list(org.Hs.egALIAS2EG)
+
+# Check that the genes of interest are found in the ref gene list
+missing.genes <- setdiff(names(log2fc.gene.list), names(gene.mapping))
+print(missing.genes)
+
+# Remove or replace the missing gene names
+names(log2fc.gene.list)[names(log2fc.gene.list) == "CD45RA"] <- "CD45"
+log2fc.gene.list <- log2fc.gene.list[!names(log2fc.gene.list) %in% missing.genes]
+
+# Map to ENTREZ gene ID
+entrez.gene.numbers <- gene.mapping[names(log2fc.gene.list)]
+
+# Create a log2 FC list with ENTREZ ID
+entrez.log2fc.list <- unname(log2fc.gene.list)
+names(entrez.log2fc.list) <- unname(entrez.gene.numbers)
+
+# Remove any duplicates
+entrez.log2fc.list <- entrez.log2fc.list[unique(names(entrez.log2fc.list))]
+
+
+# Run initial GO GSEA
+
+gse.go <- gseGO(geneList = entrez.log2fc.list, 
+                ont = "ALL", 
+                OrgDb = "org.Hs.eg.db", 
+                keyType = "ENTREZID", 
+                exponent = 1, 
+                minGSSize = 5, 
+                maxGSSize = 180, 
+                pvalueCutoff = 0.01, 
+                verbose = TRUE, 
+                pAdjustMethod = "none"
+                )
+
+gse.go.results <- gse.go@result
+
+```
+
+Make the dot plot results
+
+```{r}
+
+gse.dot.plot <- dotplot(gse.go, showCategory=20, split=".sign", font.size = 6) + facet_grid(.~.sign)
+
+
+```
+
+Enrichment Map
+
+```{r}
+
+enrichment.map <- emapplot(gse.go, showCategory = 10)
+
+similarity.matrix <- pairwise_termsim(gse.go)
+
+
+
+
+
+```
+
+KEGG Enrichment Analysis
+
+```{r}
+
+gse.kegg <- gseKEGG(geneList = entrez.log2fc.list, 
+                    organism = "hsa", 
+                    minGSSize = 5, 
+                    maxGSSize = 180, 
+                    pvalueCutoff = 0.05, 
+                    pAdjustMethod = "none", 
+                    keyType = "ncbi-geneid"
+                    )
+
+gse.kegg.results <- gse.kegg@result
+
+
+export.gse.results <- TRUE
+
+if(export.gse.results == TRUE){
+  write.csv(gse.kegg.results, "/Users/cauleyes/CCBR/CCBR-1245_Ramaswami/CCBR1245_Ramaswami_nCounter/Results/ks_alone_gse_kegg.csv")
+}
+```
